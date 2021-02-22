@@ -15,7 +15,7 @@ services:
       MYSQL_PASSWORD: P@ssw0rd
       MYSQL_ROOT_PASSWORD: R00tP@ssw0rd
     volumes:
-    - mysq-volume:/var/lib/mysql
+    - mysql-volume:/var/lib/mysql
 
   memcached:
     image: memcached:latest

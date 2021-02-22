@@ -8,7 +8,7 @@ build:
 init:
 	yarn install
 deploy: build
-	npx cdk deploy $(stack) --require-approval never --profile $(profile)
+	npx cdk deploy $(stack) --require-approval never
 destroy:
 	npx cdk destroy $(stack) --force --profile $(profile)
 cdk-upgrade:
@@ -37,10 +37,10 @@ import-cert:
 	--certificate fileb://server.crt \
 	--private-key fileb://server.key \
 	--certificate-chain fileb://ca.crt \
-	--query 'CertificateArn' --output text --region $(region) --profile $(profile) &&\
+	--query 'CertificateArn' --output text &&\
 	echo "\nClient Certificate ARN:" &&\
 	aws acm import-certificate \
 	--certificate fileb://client.crt \
 	--private-key fileb://client.key \
 	--certificate-chain fileb://ca.crt \
-	--query 'CertificateArn' --output text --region $(region) --profile $(profile)
+	--query 'CertificateArn' --output text

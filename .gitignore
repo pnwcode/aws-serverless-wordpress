@@ -17,3 +17,5 @@ env/
 
 bin/config.toml
 lib/cert
+
+.DS_Store

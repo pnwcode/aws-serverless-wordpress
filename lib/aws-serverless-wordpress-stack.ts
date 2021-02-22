@@ -96,6 +96,7 @@ import {
 import {EmailSubscription} from "@aws-cdk/aws-sns-subscriptions";
 import {Topic} from "@aws-cdk/aws-sns";
 import {CfnGroup} from "@aws-cdk/aws-resourcegroups";
+import * as codebuild from '@aws-cdk/aws-codebuild';
 import path = require('path');
 
 interface IDatabaseCredential {
@@ -293,6 +294,7 @@ export class AwsServerlessWordpressStack extends cdk.Stack {
         const elasticsearchDomainSecurityGroup = new SecurityGroup(this, 'ElasticsearchDomainSecurityGroup', {vpc});
         const bastionHostSecurityGroup = new SecurityGroup(this, 'BastionHostSecurityGroup', {vpc});
         const clientVpnSecurityGroup = new SecurityGroup(this, 'ClientVpnSecurityGroup', {vpc});
+        const codebuildSecurityGroup = new SecurityGroup(this, 'CodebuildSecurityGroup', {vpc});
 
         applicationLoadBalancerSecurityGroup.addIngressRule(Peer.anyIpv4(), Port.tcp(443));
         vpnApplicationLoadBalancerSecurityGroup.addIngressRule(clientVpnSecurityGroup, Port.tcp(443));
@@ -305,6 +307,7 @@ export class AwsServerlessWordpressStack extends cdk.Stack {
         clientVpnSecurityGroup.addIngressRule(Peer.anyIpv4(), Port.udp(1194));
 
         efsFileSystemSecurityGroup.addIngressRule(bastionHostSecurityGroup, Port.tcp(2049));
+        efsFileSystemSecurityGroup.addIngressRule(codebuildSecurityGroup, Port.tcp(2049));
         elastiCacheMemcachedSecurityGroup.addIngressRule(bastionHostSecurityGroup, Port.tcp(11211));
         rdsAuroraClusterSecurityGroup.addIngressRule(bastionHostSecurityGroup, Port.tcp(3306));
         elasticsearchDomainSecurityGroup.addIngressRule(bastionHostSecurityGroup, Port.tcp(9300));
@@ -1268,6 +1271,45 @@ export class AwsServerlessWordpressStack extends cdk.Stack {
             zone: publicHostedZone,
             recordName: `static.${props.hostname}`,
             target: RecordTarget.fromAlias(new CloudFrontTarget(staticContentDistribution))
+        });
+
+        const githubSource = codebuild.Source.gitHub({
+            owner: 'parsnips',
+            repo: 'wordpress-site',
+            webhook: true, // optional, default: true if `webhookFilters` were provided, false otherwise
+            //webhookTriggersBatchBuild: true, // optional, default is false
+            webhookFilters: [
+                codebuild.FilterGroup
+                    .inEventOf(codebuild.EventAction.PUSH)
+                    .andBranchIs('main')
+            ], // optional, by default all pushes and Pull Requests will trigger a build
+        });
+
+        const codeBuildInstance = new codebuild.Project(this, 'MyProject', {
+            buildSpec: codebuild.BuildSpec.fromObject({
+                version: '0.2',
+                phases: {
+                    build: {
+                        commands: [
+                            'ls -lah',
+                            'ls -lah /mnt/efs',
+                            'rsync -a . /mnt/efs/'
+                        ],
+                    },
+                },
+            }),
+            vpc,
+            environment: {
+                privileged: true
+            },
+            source: githubSource,
+            securityGroups: [codebuildSecurityGroup],
+            fileSystemLocations: [codebuild.FileSystemLocation.efs({
+                identifier: "myidentifier",
+                location: `${fileSystem.fileSystemId}.efs.${this.region}.amazonaws.com:/`,
+                mountOptions: "nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2",
+                mountPoint: "/mnt/efs"
+            })]
         });
 
         new CfnOutput(this, 'RootHostname', {
